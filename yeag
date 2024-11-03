@@ -1,0 +1,133 @@
+#!/bin/bash
+export VER="0.1"
+export DIRMAIN="$HOME/.config/yeag"
+
+# Initial Config
+if [[ ! -d "$DIRMAIN" ]]
+then
+	mkdir -p "$DIRMAIN"
+	mkdir -p "$DIRMAIN/tmp"
+	touch "$DIRMAIN/server.cfg"
+	touch "$DIRMAIN/client.cfg"
+	printf "SRV_NAME=\"Yeag Server\"\nPORT=\"6969\"\n\nOPORT=\"1234\"\nIPORT=\"1235\"" > "$DIRMAIN/server.cfg"
+	printf "NAME=\"User\"" > "$DIRMAIN/client.cfg"
+fi
+
+case $1 in
+	"-s")
+		load_config() {
+			echo -e " \e[2;37mLoading Config $DIRMAIN/server.cfg...\e[m"
+			source "$DIRMAIN/server.cfg"
+		}
+		exiter() {
+			killall ncat
+			exit
+		}
+
+		trap exiter SIGINT
+		load_config
+		echo -e " \e[2;37mStarting server v$VER...\e[m\n"
+
+		echo -e "$OPORT\n$IPORT\n$SRV_NAME" > "$DIRMAIN/tmp/chat_server_tmp"
+		ncat -k -c "cat $DIRMAIN/tmp/chat_server_tmp" --send-only -l $PORT &
+		ncat -k --recv-only -l $IPORT | ncat -k -l $OPORT &
+
+		# Fuck you Ncat
+		#ncat -k --recv-only -l $IPORT | ncat -k --send-only -l $OPORT &
+
+		while :
+		do
+			read -re -p " >> " MAIN
+			case $MAIN in
+				"exit")
+					exiter
+				;;
+			esac
+		done
+	;;
+	"-c")
+		load_config() {
+			echo -e " \e[2;37mLoading Config $DIRMAIN/client.cfg...\e[m"
+			source "$DIRMAIN/client.cfg"
+		}
+		draw_banner() {
+			printf "\e[H"
+			printf "\e[7;35m $SRV_NAME @ $HOST \e[m\n\n"
+		}
+		exiter() {
+			kill $NC_PID
+			exit
+		}
+
+		load_config
+		echo -e " \e[2;37mStarting client v$VER...\e[m\n"
+
+		if [[ "$HOST" == "" || "$PORT" == "" ]]
+		then
+			read -re -p " Remote host >> " HOST
+			read -re -p " Remote port >> " PORT
+		fi
+
+		nc -dN $HOST $PORT > "$DIRMAIN/tmp/chat_client_tmp"
+
+		if [[ "$(cat $DIRMAIN/tmp/chat_client_tmp | wc -l)" != 3 ]]
+		then
+			printf "Server not reachable or wrong protocol\n"
+			exit
+		else
+			OPORT="$(cat $DIRMAIN/tmp/chat_client_tmp | head -n 1 | tail -n 1)"
+			IPORT="$(cat $DIRMAIN/tmp/chat_client_tmp | head -n 2 | tail -n 1)"
+			SRV_NAME="$(cat $DIRMAIN/tmp/chat_client_tmp | head -n 3 | tail -n 1)"
+		fi
+
+		clear
+		trap exiter SIGINT
+		draw_banner
+		nc $HOST $OPORT &
+		NC_PID=$!
+
+		while :
+		do
+			read -re MAIN
+			printf "\e[A\e[2K"
+			case $MAIN in
+				"")
+					continue
+				;;
+				"!i")
+					printf "\e[?1049h"
+					echo -e "Server Info:\n"
+					echo -e "	NAME:  $SRV_NAME"
+					echo -e "	HOST:  $HOST"
+					echo -e "	PORT:  $PORT"
+					echo -e "	OPORT: $OPORT"
+					echo -e "	IPORT: $IPORT"
+					echo -e ""
+					echo -e "Client Info:\n"
+					echo -e "	VER:   $VER"
+					echo -e "	NAME:  $NAME"
+					echo -e ""
+					read -p "Press Enter"
+					printf "\e[?1049l"
+				;;
+				"!q")
+					exiter
+				;;
+				*)
+					echo "$NAME: $MAIN" > /dev/tcp/$HOST/$IPORT
+				;;
+			esac
+		done
+	;;
+	"-h" | *)
+		echo -e " Usage: yeag ..."
+		echo -e "	General usage:"
+		echo -e "		-h	= help message"
+		echo -e "		-s	= run in server mode"
+		echo -e "		-c	= run in client mode"
+		echo -e ""
+		echo -e "	Quick connect:"
+		echo -e "		HOST=localhost PORT=6969 yeag -c"
+		echo -e ""
+	;;
+esac
