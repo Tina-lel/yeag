@@ -1,5 +1,5 @@
 #!/bin/bash
-export VER="0.1"
+export VER="0.3"
 export DIRMAIN="$HOME/.config/yeag"
 
 # Initial Config
@@ -9,7 +9,7 @@ then
 	mkdir -p "$DIRMAIN/tmp"
 	touch "$DIRMAIN/server.cfg"
 	touch "$DIRMAIN/client.cfg"
-	printf "SRV_NAME=\"Yeag Server\"\nPORT=\"6969\"\n\nOPORT=\"1234\"\nIPORT=\"1235\"" > "$DIRMAIN/server.cfg"
+	printf "SRV_NAME=\"Yeag Server\"\n\nPORT=\"6969\"\nOPORT=\"1234\"\nIPORT=\"1235\"\n\nENCRYPT=\"false\"\nPASS=\"pass\" # Encryption password, please change :)" > "$DIRMAIN/server.cfg"
 	printf "NAME=\"User\"" > "$DIRMAIN/client.cfg"
 fi
 
@@ -26,14 +26,18 @@ case $1 in
 
 		trap exiter SIGINT
 		load_config
-		echo -e " \e[2;37mStarting server v$VER...\e[m\n"
+		echo -ne " \e[2;37mStarting server v$VER... "
 
-		echo -e "$OPORT\n$IPORT\n$SRV_NAME" > "$DIRMAIN/tmp/chat_server_tmp"
+		if [[ "$ENCRYPT" == "true" ]]
+		then
+			echo -e "( Encrypted )\e[m\n"
+			echo -e "$OPORT\n$IPORT\n$SRV_NAME\n$VER" | gpg -o "$DIRMAIN/tmp/chat_server_tmp" -c --cipher-algo AES256 --batch --yes --passphrase "$PASS" -
+		else
+			echo -e "\e[5;31m( UNENCRYPTED )\e[m\n"
+			echo -e "$OPORT\n$IPORT\n$SRV_NAME\n$VER" > "$DIRMAIN/tmp/chat_server_tmp"
+		fi
 		ncat -k -c "cat $DIRMAIN/tmp/chat_server_tmp" --send-only -l $PORT &
 		ncat -k --recv-only -l $IPORT | ncat -k -l $OPORT &
-
-		# Fuck you Ncat
-		#ncat -k --recv-only -l $IPORT | ncat -k --send-only -l $OPORT &
 
 		while :
 		do
@@ -56,35 +60,72 @@ case $1 in
 		}
 		exiter() {
 			kill $NC_PID
+			if [[ "$ENCRYPT" == "true" ]]
+			then
+				killall nc
+			fi
 			exit
 		}
 
 		load_config
 		echo -e " \e[2;37mStarting client v$VER...\e[m\n"
 
-		if [[ "$HOST" == "" || "$PORT" == "" ]]
+		if [[ "$HOST" == "" ]]
 		then
 			read -re -p " Remote host >> " HOST
+		fi
+
+		if [[ "$PORT" == "" ]]
+		then
 			read -re -p " Remote port >> " PORT
 		fi
 
-		nc -dN $HOST $PORT > "$DIRMAIN/tmp/chat_client_tmp"
+		cat < /dev/tcp/$HOST/$PORT > "$DIRMAIN/tmp/chat_client_tmp"
 
-		if [[ "$(cat $DIRMAIN/tmp/chat_client_tmp | wc -l)" != 3 ]]
+		if [ "$(cat $DIRMAIN/tmp/chat_client_tmp | head -n 1 | tail -n 1)" -eq "$(cat $DIRMAIN/tmp/chat_client_tmp | head -n 1 | tail -n 1)" 2> /dev/null ]
 		then
-			printf "Server not reachable or wrong protocol\n"
+			ENCRYPT="false"
+		else
+			ENCRYPT="true"
+
+			if [[ "$PASS" == "" ]]
+			then
+				read -res -p " Passphrase >> " PASS
+			fi
+
+			gpg -o "$DIRMAIN/tmp/chat_client_tmp" -qqq -d --cipher-algo AES256 --batch --yes --passphrase "$PASS" "$DIRMAIN/tmp/chat_client_tmp"
+			if [[ $? != 0 ]]
+			then
+				exit
+			fi
+		fi
+
+		if [[ "$(cat $DIRMAIN/tmp/chat_client_tmp | wc -l)" != 4 ]]
+		then
+			printf "Wrong protocol\n"
 			exit
 		else
 			OPORT="$(cat $DIRMAIN/tmp/chat_client_tmp | head -n 1 | tail -n 1)"
 			IPORT="$(cat $DIRMAIN/tmp/chat_client_tmp | head -n 2 | tail -n 1)"
 			SRV_NAME="$(cat $DIRMAIN/tmp/chat_client_tmp | head -n 3 | tail -n 1)"
+			SRV_VER="$(cat $DIRMAIN/tmp/chat_client_tmp | head -n 4 | tail -n 1)"
 		fi
 
 		clear
 		trap exiter SIGINT
 		draw_banner
-		nc $HOST $OPORT &
-		NC_PID=$!
+
+		if [[ "$ENCRYPT" == "true" ]]
+		then
+			while :
+			do
+				nc -W 2 $HOST $OPORT | gpg -qqq -o - -d --cipher-algo AES256 --batch --yes --passphrase "$PASS" - 2> /dev/null
+			done &
+			NC_PID=$!
+		else
+			cat < /dev/tcp/$HOST/$OPORT &
+			NC_PID=$!
+		fi
 
 		while :
 		do
@@ -97,15 +138,28 @@ case $1 in
 				"!i")
 					printf "\e[?1049h"
 					echo -e "Server Info:\n"
-					echo -e "	NAME:  $SRV_NAME"
-					echo -e "	HOST:  $HOST"
-					echo -e "	PORT:  $PORT"
-					echo -e "	OPORT: $OPORT"
-					echo -e "	IPORT: $IPORT"
+					echo -e "	NAME:    $SRV_NAME"
+					if [[ "$VER" != "$SRV_VER" ]]
+					then
+						echo -e "	VER:     $SRV_VER (Mismatch)"
+					else
+						echo -e "	VER:     $SRV_VER"
+					fi
+					if [[ "$ENCRYPT" == "true" ]]
+					then
+						echo -e "	ENCRYPT: true"
+					else
+						echo -e "	\e[0;31mENCRYPT: \e[5;31mfalse\e[m"
+					fi
+					echo -e ""
+					echo -e "	HOST:    $HOST"
+					echo -e "	PORT:    $PORT"
+					echo -e "	OPORT:   $OPORT"
+					echo -e "	IPORT:   $IPORT"
 					echo -e ""
 					echo -e "Client Info:\n"
-					echo -e "	VER:   $VER"
-					echo -e "	NAME:  $NAME"
+					echo -e "	VER:     $VER"
+					echo -e "	NAME:    $NAME"
 					echo -e ""
 					read -p "Press Enter"
 					printf "\e[?1049l"
@@ -114,7 +168,12 @@ case $1 in
 					exiter
 				;;
 				*)
-					echo "$NAME: $MAIN" > /dev/tcp/$HOST/$IPORT
+					if [[ "$ENCRYPT" == "true" ]]
+					then
+						echo "$NAME: $MAIN" | gpg -o - -c --cipher-algo AES256 --batch --yes --passphrase "$PASS" - > /dev/tcp/$HOST/$IPORT
+					else
+						echo "$NAME: $MAIN" > /dev/tcp/$HOST/$IPORT
+					fi
 				;;
 			esac
 		done
@@ -127,7 +186,7 @@ case $1 in
 		echo -e "		-c	= run in client mode"
 		echo -e ""
 		echo -e "	Quick connect:"
-		echo -e "		HOST=localhost PORT=6969 yeag -c"
+		echo -e "		HOST=\"localhost\" PORT=\"6969\" PASS=\"pass\" yeag -c"
 		echo -e ""
 	;;
 esac
