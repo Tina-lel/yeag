@@ -83,6 +83,10 @@ case $1 in
 		fi
 
 		cat < /dev/tcp/$HOST/$PORT > "$DIRMAIN/tmp/chat_client_tmp"
+		if [[ $? != 0 ]]
+		then
+			exit
+		fi
 
 		if [ "$(cat $DIRMAIN/tmp/chat_client_tmp | head -n 1 | tail -n 1)" -eq "$(cat $DIRMAIN/tmp/chat_client_tmp | head -n 1 | tail -n 1)" 2> /dev/null ]
 		then
