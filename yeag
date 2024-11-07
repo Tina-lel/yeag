@@ -20,6 +20,7 @@ case $1 in
 			source "$DIRMAIN/server.cfg"
 		}
 		exiter() {
+			rm -f "$DIRMAIN/tmp/chat_server_tmp"
 			killall ncat
 			exit
 		}
@@ -59,6 +60,7 @@ case $1 in
 			printf "\e[7;35m $SRV_NAME @ $HOST \e[m\n\n"
 		}
 		exiter() {
+			rm -f "$DIRMAIN/tmp/chat_client_tmp"
 			kill $NC_PID
 			if [[ "$ENCRYPT" == "true" ]]
 			then
