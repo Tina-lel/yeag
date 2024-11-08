@@ -125,7 +125,7 @@ case $1 in
 		then
 			while :
 			do
-				nc -W 2 $HOST $OPORT | gpg -qqq -o - -d --cipher-algo AES256 --batch --yes --passphrase "$PASS" - 2> /dev/null
+				nc -W 1 $HOST $OPORT | gpg -qqq -o - -d --cipher-algo AES256 --batch --yes --passphrase "$PASS" - 2> /dev/null
 			done &
 			NC_PID=$!
 		else
