@@ -2,6 +2,8 @@
 export VER="0.3"
 export DIRMAIN="$HOME/.config/yeag"
 
+set -e
+
 # Initial Config
 if [[ ! -d "$DIRMAIN" ]]
 then
@@ -83,10 +85,6 @@ case $1 in
 		fi
 
 		cat < /dev/tcp/$HOST/$PORT > "$DIRMAIN/tmp/chat_client_tmp"
-		if [[ $? != 0 ]]
-		then
-			exit
-		fi
 
 		if [ "$(cat $DIRMAIN/tmp/chat_client_tmp | head -n 1 | tail -n 1)" -eq "$(cat $DIRMAIN/tmp/chat_client_tmp | head -n 1 | tail -n 1)" 2> /dev/null ]
 		then
@@ -100,10 +98,6 @@ case $1 in
 			fi
 
 			gpg -o "$DIRMAIN/tmp/chat_client_tmp" -qqq -d --cipher-algo AES256 --batch --yes --passphrase "$PASS" "$DIRMAIN/tmp/chat_client_tmp"
-			if [[ $? != 0 ]]
-			then
-				exit
-			fi
 		fi
 
 		if [[ "$(cat $DIRMAIN/tmp/chat_client_tmp | wc -l)" != 4 ]]
@@ -125,7 +119,8 @@ case $1 in
 		then
 			while :
 			do
-				nc -W 1 $HOST $OPORT | gpg -qqq -o - -d --cipher-algo AES256 --batch --yes --passphrase "$PASS" - 2> /dev/null
+				# This code works fine most of the time, unless i try to connect to localhost. MAIK ES BRENNT
+				nc -dN $HOST $OPORT | gpg -qqq -o - -d --cipher-algo AES256 --batch --yes --passphrase "$PASS" - 2> /dev/null
 			done &
 			NC_PID=$!
 		else
