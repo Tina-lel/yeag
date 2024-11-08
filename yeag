@@ -1,5 +1,5 @@
 #!/bin/bash
-export VER="0.3"
+export VER="0.31"
 export DIRMAIN="$HOME/.config/yeag"
 
 set -e
